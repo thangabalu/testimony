@@ -6,6 +6,7 @@ DocString manipulation methods to create test reports
 """
 
 import ast
+import json
 import os
 
 from testimony.constants import (
@@ -22,10 +23,12 @@ except ImportError, e:
 
 settings = {
     'nocolor': False,
+    'json': False,
+    'jsonobject': [],
 }
 
 
-def main(report, paths, nocolor):
+def main(report, paths, nocolor, jsonoutput):
     """
     Main function for testimony project
 
@@ -33,6 +36,7 @@ def main(report, paths, nocolor):
     is taking care of validation
     """
     settings['nocolor'] = nocolor
+    settings['json'] = jsonoutput
     result = {
         'bugs': 0,
         'bugs_list': list(),
@@ -43,20 +47,20 @@ def main(report, paths, nocolor):
     dir_list = []
     for path in paths:
         result = reset_counts(result)
-        print PRINT_DASHES
+        #print PRINT_DASHES
         dir_list.append(path)
         dir_list = get_all_dirs(path, dir_list)
         for dirs in dir_list:
-            print colored(
+            test_print('Info', colored(
                 "\nTEST PATH: %s\n",
-                attrs=['bold', 'underline']) % colored(dirs, CLR_RESOURCE)
+                attrs=['bold', 'underline']) % colored(dirs, CLR_RESOURCE))
             for files in os.listdir(str(dirs)):
                 if (str(files).startswith('test_') and
                         str(files).endswith('.py')):
                     #Do not print this text for test summary
                     if report != REPORT_TAGS[1]:
-                        print colored(
-                            "Analyzing %s...", attrs=['bold']) % files
+                        test_print('Info', colored(
+                            "Analyzing %s...", attrs=['bold']) % files)
                     filepath = os.path.join(str(dirs), str(files))
                     list_strings, result = get_docstrings(
                         report, filepath, result)
@@ -74,17 +78,18 @@ def main(report, paths, nocolor):
                 col = CLR_GOOD
             else:
                 col = CLR_ERR
-            print colored(
+            test_print('Error', colored(
                 PRINT_INVALID_DOC,
-                attrs=['bold']) % colored(result['invalid_docstring'], col)
+                attrs=['bold']) % colored(result['invalid_docstring'], col))
         #Print number of test cases affected by bugs and also the list of bugs
         if report == REPORT_TAGS[3]:
-            print colored(
-                PRINT_TC_AFFECTED_BUGS, attrs=['bold']) % result['bugs']
+            test_print('Info', colored(
+                PRINT_TC_AFFECTED_BUGS, attrs=['bold']) % result['bugs'])
             if len(result["bug_list"]) > 0:
-                print colored("\nBug list:", attrs=['bold'])
+                test_print('Info', colored("\nBug list:", attrs=['bold']))
                 for bug in result["bug_list"]:
                     print bug
+    print json.dumps(settings['jsonobject'])
 
 
 def get_docstrings(report, path, result):
@@ -150,7 +155,7 @@ def get_docstrings(report, path, result):
                         if len(item_list) != 0:
                             return_list.append(item_list)
         except AttributeError:
-            if report == REPORT_TAGS[0] or report == REPORT_TAGS[2]:
+            if report == REPORT_TAGS[2]:
                 print colored("%s", CLR_RESOURCE) % func_name
                 print colored(PRINT_DOC_MISSING, CLR_ERR)
             result['no_docstring'] = result['no_docstring'] + 1
@@ -168,7 +173,7 @@ def print_testcases(report, list_strings, result):
     for docstring in list_strings:
         if report == REPORT_TAGS[0]:
             tc = tc + 1
-            print "TC %d" % tc
+            #print "TC %d" % tc
 
         #verify if this needs to be printed
         manual_print = False
@@ -182,11 +187,11 @@ def print_testcases(report, list_strings, result):
                 if DOCSTRING_TAGS[6] in docstring_tag[0].lower():
                     manual_print = True
         if report == REPORT_TAGS[5] and auto_print is True:
-            print_line_item(docstring)
+            print_line_item(docstring, tc)
         if report == REPORT_TAGS[4] and manual_print is True:
-            print_line_item(docstring)
+            print_line_item(docstring, tc)
         if report == REPORT_TAGS[0] or report == REPORT_TAGS[2]:
-            print_line_item(docstring)
+            print_line_item(docstring, tc)
 
 
 def update_summary(list_strings, result):
@@ -225,13 +230,16 @@ def reset_counts(result):
     return result
 
 
-def print_line_item(docstring):
+def print_line_item(docstring, tc):
     """
     Parses the given docstring list to print out each line item
     """
-    for lineitem in docstring:
-        print lineitem
-    print "\n"
+    if settings['json']:
+        test_print('TC%d' % tc, docstring)
+    else:
+        for lineitem in docstring:
+            print lineitem
+            print "\n"
 
 
 def get_all_dirs(path, dir_list):
@@ -250,7 +258,14 @@ def colored(text, color=None, attrs=None):
     """
     Checks if termcolor is installed before calling it
     """
-    if has_termcolor and not settings['nocolor']:
+    if has_termcolor and not settings['nocolor'] and not settings['json']:
         return termcolor.colored(text, color=color, attrs=attrs)
     else:
         return text
+
+def test_print(info, text):
+    """
+    Do a json dump or print
+    """
+    settings['jsonobject'].append(info)
+    settings['jsonobject'].append(text)
